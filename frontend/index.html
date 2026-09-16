@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OGN Live-Tracker mit Teamcode</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<link rel="stylesheet" href="style.css?v=19" />
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <button id="btn-toggle-sidebar" class="sidebar-toggle-btn" title="Seitenleiste ein-/ausblenden">☰</button>
+    <h1>OGN Live-Tracker</h1>
+    <div id="feed-status" class="status">OGN-Feed: …</div>
+    <div id="status" class="status">Verbinde…</div>
+  </header>
+
+  <aside id="sidebar">
+    <section class="panel">
+      <h2 class="panel-toggle" data-panel-key="reference">Referenzpunkt <span class="panel-caret">▾</span></h2>
+      <div class="panel-body">
+        <div id="ref-display">–</div>
+
+        <label for="cup-file" class="file-label">CUP-Datei hochladen:</label>
+        <input type="file" id="cup-file" accept=".cup">
+
+        <div id="waypoint-select-row" class="hidden">
+          <select id="waypoint-select"></select>
+          <button id="btn-use-waypoint">Übernehmen</button>
+        </div>
+        <div id="cup-upload-result" class="result-box hidden"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-toggle" data-panel-key="teamcode">Teamcode <span class="panel-caret">▾</span></h2>
+      <div class="panel-body">
+        <button id="btn-code-mode" class="toggle-btn">📍 Auf Karte klicken für Teamcode</button>
+        <div id="clicked-code-result" class="result-box hidden"></div>
+
+        <hr>
+
+        <label for="input-code">Teamcode eingeben:</label>
+        <div class="input-row">
+          <input type="text" id="input-code" placeholder="z.B. 435O" maxlength="10">
+          <button id="btn-show-code">Position zeigen</button>
+        </div>
+        <div id="decoded-code-result" class="result-box hidden"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-toggle" data-panel-key="soaringspot">SoaringSpot-Aufgaben <span class="panel-caret">▾</span></h2>
+      <div class="panel-body">
+        <div class="task-row">
+          <span class="task-color-dot" style="background:#d92626;"></span>
+          <input type="text" id="task-url-1" placeholder="Link zur Task-Seite (Aufgabe 1, rot)">
+          <button class="task-load-btn" data-task-slot="1">Laden</button>
+        </div>
+        <div id="task-status-1" class="result-box hidden"></div>
+
+        <div class="task-row">
+          <span class="task-color-dot" style="background:#2f6fb0;"></span>
+          <input type="text" id="task-url-2" placeholder="Link zur Task-Seite (Aufgabe 2, blau)">
+          <button class="task-load-btn" data-task-slot="2">Laden</button>
+        </div>
+        <div id="task-status-2" class="result-box hidden"></div>
+
+        <div class="task-row">
+          <span class="task-color-dot" style="background:#1fa088;"></span>
+          <input type="text" id="task-url-3" placeholder="Link zur Task-Seite (Aufgabe 3, grün)">
+          <button class="task-load-btn" data-task-slot="3">Laden</button>
+        </div>
+        <div id="task-status-3" class="result-box hidden"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-toggle" data-panel-key="airspace">Luftraum <span class="panel-caret">▾</span></h2>
+      <div class="panel-body">
+        <label for="airspace-file" class="file-label">OpenAir-Datei hochladen:</label>
+        <input type="file" id="airspace-file" accept=".txt">
+        <div id="airspace-upload-result" class="result-box hidden"></div>
+        <label class="toggle-row">
+          <input type="checkbox" id="airspace-toggle" checked>
+          Lufträume anzeigen
+        </label>
+
+        <div class="disabled-airspace-header">
+          <span>Für heute deaktiviert:</span>
+          <button id="btn-reenable-all-airspaces" class="link-btn">Alle wieder einblenden</button>
+        </div>
+        <div id="disabled-airspace-list"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-toggle" data-panel-key="weather">Wetter (Radar/Satellit) <span class="panel-caret">▾</span></h2>
+      <div class="panel-body">
+        <label class="toggle-row">
+          <input type="checkbox" id="weather-link-toggle">
+          Zeitleisten verknüpfen
+        </label>
+        <div class="weather-layer-block">
+          <label><input type="checkbox" id="dwd-radar-toggle"> DWD Regenradar (Deutschland)</label>
+          <div id="dwd-radar-controls" class="weather-controls hidden">
+            <div class="weather-timeline-row">
+              <button id="dwd-radar-play" class="link-btn">▶</button>
+              <input type="range" id="dwd-radar-slider" min="0" max="0" value="0">
+            </div>
+            <div id="dwd-radar-time" class="weather-time-label">–</div>
+          </div>
+          <div id="dwd-radar-status" class="result-box hidden"></div>
+        </div>
+
+        <div class="weather-layer-block">
+          <label><input type="checkbox" id="eumetsat-toggle"> EUMETSAT Satellitenbild</label>
+          <div id="eumetsat-controls" class="weather-controls hidden">
+            <div class="weather-timeline-row">
+              <button id="eumetsat-play" class="link-btn">▶</button>
+              <input type="range" id="eumetsat-slider" min="0" max="0" value="0">
+            </div>
+            <div id="eumetsat-time" class="weather-time-label">–</div>
+          </div>
+          <div id="eumetsat-status" class="result-box hidden"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-toggle" data-panel-key="aircraft">Flugzeuge in Sicht <span class="panel-caret">▾</span></h2>
+      <div class="panel-body">
+        <div id="aircraft-count">0 Flugzeuge</div>
+        <div class="filter-toggle-row">
+          <button id="btn-filter-all" class="link-btn">Alle auswählen</button>
+          <button id="btn-filter-none" class="link-btn">Alle abwählen</button>
+        </div>
+        <div id="class-filters" class="filter-list"></div>
+      </div>
+    </section>
+  </aside>
+
+  <main id="map"></main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="teamcode.js?v=19"></script>
+<script src="app.js?v=19"></script>
+</body>
+</html>

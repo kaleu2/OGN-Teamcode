@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+ogn-client>=2.0.0
+requests>=2.32
+python-multipart>=0.0.9
+beautifulsoup4>=4.12
+lxml>=5.0

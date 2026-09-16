@@ -1,0 +1,4 @@
+backend/venv/
+backend/data/reference.json
+__pycache__/
+*.pyc
