@@ -10,11 +10,11 @@ from pydantic import BaseModel
 import requests as requests_lib
 
 from . import teamcode
-from .cup import parse_cup
+from .cup import parse_cup, parse_cup_tasks
 from .ddb import device_database
 from .ogn_feed import OgnFeed
 from .openair import parse_openair
-from .soaringspot import fetch_task
+from .soaringspot import fetch_task, fetch_competition_today
 from .weather_layers import get_dwd_radar_info, get_eumetsat_info
 
 logging.basicConfig(level=logging.INFO)
@@ -109,7 +109,8 @@ async def parse_cup_file(file: UploadFile = File(...)):
             status_code=400,
             detail="Keine gueltigen Wendepunkte in der Datei gefunden. Ist es eine SeeYou-CUP-Datei?",
         )
-    return {"waypoints": waypoints}
+    tasks = parse_cup_tasks(text)
+    return {"waypoints": waypoints, "tasks": tasks}
 
 
 class SoaringSpotTaskRequest(BaseModel):
@@ -124,6 +125,44 @@ def get_soaringspot_task(req: SoaringSpotTaskRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except requests_lib.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Konnte SoaringSpot nicht erreichen: {e}")
+
+
+@app.post("/api/soaringspot/today")
+def get_soaringspot_today(req: SoaringSpotTaskRequest):
+    try:
+        return fetch_competition_today(req.url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except requests_lib.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Konnte SoaringSpot nicht erreichen: {e}")
+
+
+class AirspaceUrlRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/airspace/parse-openair-url")
+def parse_openair_from_url(req: AirspaceUrlRequest):
+    try:
+        resp = requests_lib.get(
+            req.url,
+            timeout=20,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; OGNTeamcodeTool/1.0)"},
+        )
+        resp.raise_for_status()
+        try:
+            text = resp.content.decode("utf-8")
+        except UnicodeDecodeError:
+            text = resp.content.decode("latin-1", errors="replace")
+    except requests_lib.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Konnte Datei nicht laden: {e}")
+
+    airspaces = parse_openair(text)
+    if not airspaces:
+        raise HTTPException(
+            status_code=400, detail="Keine gueltigen Lufträume in der geladenen Datei gefunden."
+        )
+    return {"airspaces": airspaces}
 
 
 @app.post("/api/airspace/parse-openair")

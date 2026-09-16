@@ -475,6 +475,47 @@ html, body {
   font-size: 14px;
 }
 
+#cup-task-select-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 100%;
+}
+
+#cup-task-select-row select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid #c7cfd9;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+#btn-use-cup-task {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  background: #1fa088;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#custom-aircraft-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 6px;
+  border: 1px solid #c7cfd9;
+  border-radius: 6px;
+  resize: vertical;
+  margin-bottom: 6px;
+}
+
 .popup-teamcode {
   font-weight: bold;
   font-size: 15px;

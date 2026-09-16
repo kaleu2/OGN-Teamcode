@@ -205,6 +205,28 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Neu: CUP-Aufgaben, eigene Flugzeugliste, SoaringSpot-Automatik
+
+- **Aufgaben direkt aus der CUP-Datei:** Beim CUP-Upload werden jetzt auch
+  enthaltene Aufgaben (die "-----Related Tasks-----"-Sektion) erkannt.
+  Auswählen und einem der 3 Farb-Slots zuweisen - genau wie bei SoaringSpot-
+  Aufgaben, inklusive Start-/Ziellinien-Erkennung.
+- **Eigene Flugzeugliste:** FLARM-ID, Kennzeichen, Land (→ Flagge) und Typ
+  hinterlegen (eine Zeile pro Flugzeug: `FLARM-ID,Kennzeichen,Land,Typ`).
+  Überschreibt die angezeigte Kennung/Flagge/Typ für passende Flugzeuge,
+  optional exklusiv nur diese anzeigen.
+- **SoaringSpot-Automatik:** Ein einziger Link zum Wettbewerb lädt
+  automatisch die heutigen Aufgaben aller Klassen (bis zu 3 Farb-Slots),
+  die Luftraum-Datei und die Wendepunktdatei.
+
+**Wichtiger Hinweis zur SoaringSpot-Automatik:** Die Erkennung "alle Klassen
+am heutigen Tag" beruht auf einem Muster (Links der Form
+`/tasks/<klasse>/task-N-on-<heutiges-Datum>` auf der Wettbewerbs-Hauptseite
+bzw. `/results`-Unterseite). Das konnte ich nicht live gegen echtes
+SoaringSpot testen. Bitte an einem echten Wettbewerbstag einmal ausprobieren
+und mir sagen, was die Statusbox anzeigt (auch im Fehlerfall - die genaue
+Meldung hilft beim Nachbessern).
+
 ## Wetter-Ebenen (Radar/Satellit) – bitte einmal testen!
 
 Neu dabei: DWD-Regenradar und EUMETSAT-Satellitenbild als ein-/ausblendbare

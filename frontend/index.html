@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OGN Live-Tracker mit Teamcode</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<link rel="stylesheet" href="style.css?v=19" />
+<link rel="stylesheet" href="style.css?v=20" />
 </head>
 <body>
 <div id="app">
@@ -30,6 +30,17 @@
           <button id="btn-use-waypoint">Übernehmen</button>
         </div>
         <div id="cup-upload-result" class="result-box hidden"></div>
+
+        <div id="cup-task-select-row" class="hidden">
+          <label class="file-label">Aufgabe aus dieser Datei anzeigen:</label>
+          <select id="cup-task-select"></select>
+          <select id="cup-task-slot-select">
+            <option value="1">als Aufgabe 1 (rot)</option>
+            <option value="2">als Aufgabe 2 (blau)</option>
+            <option value="3">als Aufgabe 3 (grün)</option>
+          </select>
+          <button id="btn-use-cup-task">Anzeigen</button>
+        </div>
       </div>
     </section>
 
@@ -53,6 +64,17 @@
     <section class="panel">
       <h2 class="panel-toggle" data-panel-key="soaringspot">SoaringSpot-Aufgaben <span class="panel-caret">▾</span></h2>
       <div class="panel-body">
+        <label class="file-label">Automatik: ein Link lädt alles</label>
+        <div class="input-row">
+          <input type="text" id="soaringspot-auto-url" placeholder="Link zum Wettbewerb (z.B. .../en_gb/mein-wettbewerb)">
+          <button id="btn-load-soaringspot-today">Alles laden</button>
+        </div>
+        <p class="hint">Lädt automatisch die heutigen Aufgaben aller Klassen (bis zu 3), die Luftraum-Datei und die Wendepunktdatei des Wettbewerbs.</p>
+        <div id="soaringspot-auto-status" class="result-box hidden"></div>
+
+        <hr>
+        <label class="file-label">Oder einzeln, pro Klasse/Farbe:</label>
+
         <div class="task-row">
           <span class="task-color-dot" style="background:#d92626;"></span>
           <input type="text" id="task-url-1" placeholder="Link zur Task-Seite (Aufgabe 1, rot)">
@@ -102,6 +124,8 @@
           <input type="checkbox" id="weather-link-toggle">
           Zeitleisten verknüpfen
         </label>
+        <p class="hint">Satellit hat keine Vorhersage - bei verknüpften Zeitleisten bleibt er in der Zukunft auf seinem letzten echten Bild stehen.</p>
+
         <div class="weather-layer-block">
           <label><input type="checkbox" id="dwd-radar-toggle"> DWD Regenradar (Deutschland)</label>
           <div id="dwd-radar-controls" class="weather-controls hidden">
@@ -129,6 +153,20 @@
     </section>
 
     <section class="panel">
+      <h2 class="panel-toggle" data-panel-key="custom-list">Eigene Flugzeugliste <span class="panel-caret">▾</span></h2>
+      <div class="panel-body">
+        <p class="hint">Eine Zeile pro Flugzeug: FLARM-ID,Kennzeichen,Land (2 Buchstaben für die Flagge),Flugzeugtyp</p>
+        <textarea id="custom-aircraft-textarea" rows="5" placeholder="3EE4A1,D-1234,DE,ASH-31&#10;DDA1B2,D-5678,DE,LS8"></textarea>
+        <button id="btn-save-custom-list" class="toggle-btn">Liste speichern</button>
+        <div id="custom-list-status" class="result-box hidden"></div>
+        <label class="toggle-row">
+          <input type="checkbox" id="custom-list-only-toggle">
+          Nur Flugzeuge aus dieser Liste anzeigen
+        </label>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2 class="panel-toggle" data-panel-key="aircraft">Flugzeuge in Sicht <span class="panel-caret">▾</span></h2>
       <div class="panel-body">
         <div id="aircraft-count">0 Flugzeuge</div>
@@ -145,7 +183,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="teamcode.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="teamcode.js?v=20"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

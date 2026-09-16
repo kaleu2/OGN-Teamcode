@@ -12,6 +12,7 @@ wie vom Nutzer gewuenscht.
 """
 
 import re
+from datetime import date
 
 import requests
 from bs4 import BeautifulSoup
@@ -90,6 +91,46 @@ def _find_cup_download_url(html: str, base_url: str) -> str:
     )
 
 
+def _find_all_txt_download_urls(html: str, base_url: str) -> list[str]:
+    """Luftraum-Dateien (OpenAir) werden auf SoaringSpot-Downloads-Seiten
+    praktisch immer als .txt verlinkt - andere Dateitypen dort sind .cup,
+    .gpx, .wpz o.ae., .txt ist in der Praxis eindeutig genug."""
+    soup = BeautifulSoup(html, "lxml")
+    urls = []
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.lower().endswith(".txt"):
+            urls.append(href if href.startswith("http") else base_url.rstrip("/") + "/" + href.lstrip("/"))
+    return urls
+
+
+def _fetch_and_decode(url: str, headers: dict) -> str:
+    resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    try:
+        return resp.content.decode("utf-8")
+    except UnicodeDecodeError:
+        return resp.content.decode("latin-1", errors="replace")
+
+
+def _find_task_links_for_date(html: str, target_date: str) -> dict[str, str]:
+    """Findet Links der Form '/tasks/<klasse>/task-N-on-<datum>' und liefert
+    {klasse: absolute_url} - ein Eintrag pro gefundener Klasse fuer das
+    angegebene Datum (YYYY-MM-DD)."""
+    pattern = re.compile(r"/tasks/([^/]+)/(task-\d+-on-" + re.escape(target_date) + r")")
+    soup = BeautifulSoup(html, "lxml")
+    found: dict[str, str] = {}
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        m = pattern.search(href)
+        if not m:
+            continue
+        klass = m.group(1)
+        url = href if href.startswith("http") else "https://www.soaringspot.com" + href
+        found.setdefault(klass, url)
+    return found
+
+
 def fetch_task(task_url: str) -> dict:
     headers = {"User-Agent": USER_AGENT}
 
@@ -101,13 +142,7 @@ def fetch_task(task_url: str) -> dict:
     downloads_resp = requests.get(base + "/downloads", headers=headers, timeout=REQUEST_TIMEOUT)
     downloads_resp.raise_for_status()
     cup_url = _find_cup_download_url(downloads_resp.text, base)
-
-    cup_resp = requests.get(cup_url, headers=headers, timeout=REQUEST_TIMEOUT)
-    cup_resp.raise_for_status()
-    try:
-        cup_text = cup_resp.content.decode("utf-8")
-    except UnicodeDecodeError:
-        cup_text = cup_resp.content.decode("latin-1", errors="replace")
+    cup_text = _fetch_and_decode(cup_url, headers)
 
     waypoints = parse_cup(cup_text)
     by_name = {w["name"]: w for w in waypoints}
@@ -137,3 +172,69 @@ def fetch_task(task_url: str) -> dict:
         )
 
     return {"turnpoints": resolved, "unresolved_names": unresolved}
+
+
+def fetch_competition_today(any_competition_url: str) -> dict:
+    """Automatik-Import: ausgehend von IRGENDEINEM Link zu einem Wettbewerb
+    (Hauptseite oder eine einzelne Task-Seite) werden automatisch geladen:
+      - die Aufgaben des heutigen Tages in ALLEN verfuegbaren Klassen
+      - die Luftraum-Datei (OpenAir .txt) von der Downloads-Seite
+      - die CUP-Wendepunktdatei des Wettbewerbs (fuer die Referenzpunkt-Auswahl)
+
+    Wichtiger Hinweis: Die Erkennung "alle Klassen am heutigen Tag" beruht
+    auf einem Muster (Links der Form /tasks/<klasse>/task-N-on-<heute> auf
+    der Wettbewerbs-Hauptseite bzw. deren /results-Unterseite). Das konnte
+    nicht live gegen echtes SoaringSpot getestet werden - falls an einem
+    echten Wettbewerbstag keine Aufgaben gefunden werden, obwohl welche
+    online stehen, liegt es wahrscheinlich an einer abweichenden Seiten-
+    struktur, die wir dann gezielt nachbessern koennen.
+    """
+    headers = {"User-Agent": USER_AGENT}
+    base = _competition_base_url(any_competition_url + "/")  # funktioniert auch mit einer nackten Basis-URL
+    today = date.today().isoformat()
+
+    class_task_urls: dict[str, str] = {}
+    for suffix in ("", "/results"):
+        try:
+            resp = requests.get(base + suffix, headers=headers, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            class_task_urls.update(_find_task_links_for_date(resp.text, today))
+        except requests.RequestException:
+            continue
+
+    if not class_task_urls:
+        raise ValueError(
+            f"Keine Aufgaben fuer den heutigen Tag ({today}) gefunden. Entweder ist heute "
+            "kein Wettbewerbstag, die Aufgaben sind auf SoaringSpot noch nicht "
+            "veroeffentlicht, oder die Seitenstruktur weicht von der erwarteten ab."
+        )
+
+    tasks = []
+    for klass, task_url in class_task_urls.items():
+        try:
+            result = fetch_task(task_url)
+            tasks.append({"class": klass, "task_url": task_url, **result})
+        except Exception as e:
+            tasks.append({"class": klass, "task_url": task_url, "error": str(e)})
+
+    airspace_url = None
+    cup_waypoints = []
+    try:
+        downloads_resp = requests.get(base + "/downloads", headers=headers, timeout=REQUEST_TIMEOUT)
+        downloads_resp.raise_for_status()
+
+        txt_urls = _find_all_txt_download_urls(downloads_resp.text, base)
+        if txt_urls:
+            airspace_url = txt_urls[0]
+
+        cup_url = _find_cup_download_url(downloads_resp.text, base)
+        cup_waypoints = parse_cup(_fetch_and_decode(cup_url, headers))
+    except Exception:
+        pass  # Airspace/CUP sind hier "nice to have" - Aufgaben sind das Wichtigste
+
+    return {
+        "date": today,
+        "tasks": tasks,
+        "airspace_url": airspace_url,
+        "cup_waypoints": cup_waypoints,
+    }

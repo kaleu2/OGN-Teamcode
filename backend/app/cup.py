@@ -65,3 +65,118 @@ def parse_cup(content: str) -> list[dict]:
         waypoints.append({"name": name, "code": code, "lat": lat, "lon": lon})
 
     return waypoints
+
+
+def _parse_cup_distance(raw: str | None, default_km: float = 0.5) -> float:
+    """Feld wie '400m', '10000m' oder '6.4km' -> Kilometer."""
+    if not raw:
+        return default_km
+    raw = raw.strip().lower()
+    try:
+        if raw.endswith("km"):
+            return float(raw[:-2])
+        if raw.endswith("m"):
+            return float(raw[:-1]) / 1000.0
+        return float(raw) / 1000.0  # ohne Einheit: SeeYou nutzt dann Meter
+    except ValueError:
+        return default_km
+
+
+def parse_cup_tasks(content: str) -> list[dict]:
+    """Liest die "-----Related Tasks-----"-Sektion einer CUP-Datei.
+
+    Format (offizielle SeeYou-Spezifikation):
+      "Beschreibung","Wendepunkt1","Wendepunkt2",...
+      Options,NoStart=...,TaskTime=...
+      ObsZone=0,Style=2,R1=400m,A1=180,Line=1
+      ObsZone=1,Style=0,R1=35000m,A1=30
+
+    Die Wendepunkt-Namen muessen exakt den "Name"-Feldern der Wendepunkte
+    oberhalb der Related-Tasks-Zeile entsprechen. ObsZone-Zeilen sind
+    optional und referenzieren den Wendepunkt per Index (0 = erster Punkt
+    der Aufgaben-Zeile). Sektor-Winkel (A1/A2) werden bewusst ignoriert und
+    immer als voller Zylinder gezeichnet - genau wie bei den SoaringSpot-
+    Aufgaben, die aus demselben Grund auch nur Zylinder/Linie kennen.
+    """
+    if content.startswith("\ufeff"):
+        content = content.lstrip("\ufeff")
+
+    waypoints = parse_cup(content)
+    by_name = {w["name"]: w for w in waypoints}
+    by_name_lower = {w["name"].lower(): w for w in waypoints}
+
+    task_lines = []
+    in_tasks = False
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not in_tasks:
+            if line.startswith("-----"):
+                in_tasks = True
+            continue
+        if line:
+            task_lines.append(line)
+
+    tasks = []
+    current = None
+
+    for line in task_lines:
+        upper = line.upper()
+
+        if upper.startswith("OPTIONS"):
+            continue  # Zeitfenster/Distanzregeln - fuer die Kartendarstellung nicht relevant
+
+        if upper.startswith("OBSZONE"):
+            if current is None:
+                continue
+            parts = line.split(",")
+            fields = {}
+            for part in parts:
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    fields[k.strip().upper()] = v.strip()
+            try:
+                idx = int(fields.get("OBSZONE", parts[0].split("=", 1)[-1]))
+            except (ValueError, IndexError):
+                continue
+            if 0 <= idx < len(current["turnpoints"]):
+                current["turnpoints"][idx]["radius_km"] = _parse_cup_distance(fields.get("R1"))
+                current["turnpoints"][idx]["zone_type"] = (
+                    "line" if fields.get("LINE") == "1" else "cylinder"
+                )
+            continue
+
+        # Neue Aufgaben-Zeile: kommagetrennt, Werte in Anfuehrungszeichen
+        try:
+            row = next(csv.reader([line], skipinitialspace=True))
+        except csv.Error:
+            continue
+        if not row:
+            continue
+
+        description = row[0].strip()
+        tp_names = [c.strip() for c in row[1:] if c.strip()]
+        if len(tp_names) < 2:
+            continue  # keine sinnvolle Aufgabe (Start+mind. 1 weiterer Punkt)
+
+        turnpoints = []
+        unresolved = []
+        for name in tp_names:
+            wp = by_name.get(name) or by_name_lower.get(name.lower())
+            if wp is None:
+                unresolved.append(name)
+                continue
+            turnpoints.append(
+                {"name": name, "lat": wp["lat"], "lon": wp["lon"], "radius_km": 0.5, "zone_type": "cylinder"}
+            )
+
+        if len(turnpoints) < 2:
+            continue  # zu wenige aufloesbare Punkte fuer eine sinnvolle Darstellung
+
+        current = {
+            "name": description or f"Aufgabe {len(tasks) + 1}",
+            "turnpoints": turnpoints,
+            "unresolved_names": unresolved,
+        }
+        tasks.append(current)
+
+    return tasks

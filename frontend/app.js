@@ -2,18 +2,13 @@ const AIRCRAFT_REFRESH_MS = 8000;
 const FEED_STATUS_REFRESH_MS = 5000;
 
 // Einfarbige SVG-Symbole je Flugzeugklasse (Code gemaess OGN-APRS-Protokoll).
+// "wide" laesst Segelflugzeuge mit ihren langen, schlanken Fluegeln erkennbar
+// breiter wirken als Motorflugzeuge - simple Skalierung derselben Grundform.
 const PLANE_PATH =
   "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2.5 1.5V22l4-1 4 1v-1.5L13 19v-5.5l8 2.5z";
 
-// Eigene, schlankere Silhouette fuer Segelflugzeuge statt der generischen
-// PLANE_PATH-Form (die mit ihren geschwungenen, gepfeilten Fluegeln eher wie
-// ein Motorflugzeug/Jet wirkt): langer duenner Rumpf, sehr lange gerade,
-// leicht verjuengte Tragflaechen weit vorne, kleines Hoehenleitwerk hinten.
-const GLIDER_PATH =
-  "M12 1 L12.8 7 L12.8 8.5 L23 11.5 L23 13 L12.8 11 L12.8 19 L12.8 19.8 L16.5 21 L16.5 22 L12.8 21 L12 23 L11.2 21 L7.5 22 L7.5 21 L11.2 19.8 L11.2 19 L11.2 11 L1 13 L1 11.5 L11.2 8.5 L11.2 7 Z";
-
 const AIRCRAFT_SVG = {
-  1: `<path d="${GLIDER_PATH}"/>`, // Segelflugzeug
+  1: `<g transform="translate(12 12) scale(1.35 1) translate(-12 -12)"><path d="${PLANE_PATH}"/></g>`, // Segelflugzeug: breiter
   2: `<path d="${PLANE_PATH}"/>`, // Schleppflugzeug
   3: `<circle cx="12" cy="15" r="3"/><rect x="2" y="11" width="20" height="2"/><rect x="11" y="2" width="2" height="10"/>`, // Hubschrauber
   4: `<path d="M2 11 A10 9 0 0 1 22 11 L17 11 L15.5 21 L13.5 11 L10.5 11 L8.5 21 L7 11 Z"/>`, // Fallschirm
@@ -30,7 +25,7 @@ const AIRCRAFT_SVG = {
 };
 
 const AIRCRAFT_STYLES = {
-  1: { color: "#1f6fb0", label: "Segelflugzeug" },
+  1: { color: "#000000", label: "Segelflugzeug" },
   2: { color: "#b0701f", label: "Schleppflugzeug" },
   3: { color: "#7a1fb0", label: "Hubschrauber" },
   4: { color: "#555555", label: "Fallschirm" },
@@ -53,14 +48,6 @@ function styleFor(typeCode) {
 
 function svgFor(typeCode) {
   return AIRCRAFT_SVG[typeCode] || AIRCRAFT_SVG[0];
-}
-
-// Segelflugzeuge etwas groesser darstellen als die uebrigen Klassen, damit
-// ihre schlanke Silhouette erkennbar bleibt.
-const AIRCRAFT_SIZE_SCALE = { 1: 1.15 };
-
-function sizeScaleFor(typeCode) {
-  return AIRCRAFT_SIZE_SCALE[typeCode] || 1;
 }
 
 let activeClassFilters = loadClassFilters();
@@ -270,20 +257,34 @@ function aircraftIconHtml(ac) {
   const style = styleFor(ac.aircraft_type_code);
   const label = aircraftLabel(ac);
   const isFav = favorites.has(ac.address);
+  const isGlider = ac.aircraft_type_code === 1;
+  // Segelflugzeuge deutlich groesser/dicker als der Rest, damit sie auf
+  // einen Blick auffallen (das sind meistens die relevanten Ziele hier).
+  // Inline-Style statt HTML-Attribut, da die CSS-Datei sonst eine feste
+  // Groesse erzwingt und ein blosses width/height-Attribut ueberstimmt.
+  const symbolBoxStyle = isGlider ? "width:32px;height:32px;" : "";
+  const svgSizeStyle = isGlider ? "width:28px;height:28px;" : "";
+  const strokeAttr = isGlider ? ' stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"' : "";
   const labelHtml = label
     ? `<div class="ac-label" style="color:${style.color}; border:1px solid ${style.color};">${label}</div>`
     : "";
   return `
     <div class="ac-marker${isFav ? " favorite" : ""}">
       ${labelHtml}
-      <div class="ac-symbol" style="color:${style.color};">
-        <svg viewBox="0 0 24 24" fill="currentColor" style="transform: rotate(${rotation}deg) scale(${sizeScaleFor(ac.aircraft_type_code)});">${svgFor(ac.aircraft_type_code)}</svg>
+      <div class="ac-symbol" style="color:${style.color}; ${symbolBoxStyle}">
+        <svg viewBox="0 0 24 24" fill="currentColor"${strokeAttr} style="${svgSizeStyle} transform: rotate(${rotation}deg);">${svgFor(ac.aircraft_type_code)}</svg>
       </div>
     </div>
   `;
 }
 
 function aircraftLabel(ac) {
+  const custom = getCustomEntry(ac.address);
+  if (custom) {
+    const flag = countryFlagEmoji(custom.country);
+    const idText = custom.registration || ac.competition_id || ac.address.slice(-4);
+    return (flag ? flag + " " : "") + idText;
+  }
   return ac.competition_id || ac.registration || null;
 }
 
@@ -292,6 +293,8 @@ function aircraftPopupHtml(ac) {
     reference != null
       ? encodeTeamcode(reference.lat, reference.lon, ac.latitude, ac.longitude)
       : "–";
+
+  const customEntry = getCustomEntry(ac.address);
 
   // Reihenfolge exakt wie gewuenscht. "Kitts" wurde noch nicht geklaert,
   // daher vorerst ausgelassen - siehe Rueckfrage im Chat.
@@ -302,8 +305,8 @@ function aircraftPopupHtml(ac) {
     ["Teamcode", code],
     ["Flarm ID", ac.address],
     ["Kurs", ac.track_deg != null ? `${Math.round(ac.track_deg)}°` : "–"],
-    ["Kennung", ac.registration || "–"],
-    ["Typ", ac.aircraft_model || ac.aircraft_type || "–"],
+    ["Kennung", (customEntry && customEntry.registration) || ac.registration || "–"],
+    ["Typ", (customEntry && customEntry.type) || ac.aircraft_model || ac.aircraft_type || "–"],
     ["Letztes Signal", `vor ${Math.round(ac.seconds_since_update)} s`],
   ];
 
@@ -348,9 +351,11 @@ function renderAircraft(list) {
 }
 
 function applyAircraftFilterAndRender() {
-  const list = lastAircraftList.filter((ac) =>
-    activeClassFilters.has(ac.aircraft_type_code ?? 0)
-  );
+  const list = lastAircraftList.filter((ac) => {
+    if (!activeClassFilters.has(ac.aircraft_type_code ?? 0)) return false;
+    if (customListOnly && !getCustomEntry(ac.address)) return false;
+    return true;
+  });
   const seen = new Set();
 
   for (const ac of list) {
@@ -718,7 +723,80 @@ function syncLinkedTimeline(sourceKey) {
   setWeatherFrame(otherKey, closestTimeIndex(other.times, targetMs));
 }
 
+// ---------- Eigene Flugzeugliste (FLARM-ID -> Kennzeichen/Land/Typ) ----------
+let customAircraftList = new Map(); // address (Grossbuchstaben) -> {registration, country, type}
+let customListOnly = false;
+
+function loadCustomAircraftList() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("ogn_custom_aircraft_list") || "[]");
+    customAircraftList = new Map(raw.map((e) => [e.address, e]));
+  } catch (e) {
+    customAircraftList = new Map();
+  }
+}
+
+function saveCustomAircraftListToStorage() {
+  try {
+    localStorage.setItem(
+      "ogn_custom_aircraft_list",
+      JSON.stringify([...customAircraftList.entries()].map(([address, e]) => ({ address, ...e })))
+    );
+  } catch (e) {
+    // localStorage evtl. nicht verfuegbar
+  }
+}
+
+// Wandelt einen 2-Buchstaben-Laendercode in das entsprechende Flaggen-Emoji um
+// (Unicode "Regional Indicator"-Trick, funktioniert ohne Bilddateien).
+function countryFlagEmoji(countryCode) {
+  if (!countryCode || countryCode.trim().length !== 2) return "";
+  const cc = countryCode.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(cc)) return "";
+  const codePoints = [...cc].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65);
+  return String.fromCodePoint(...codePoints);
+}
+
+function parseCustomAircraftListText(text) {
+  const map = new Map();
+  text.split("\n").forEach((line) => {
+    line = line.trim();
+    if (!line || line.startsWith("#")) return;
+    const parts = line.split(",").map((p) => p.trim());
+    const [address, registration, country, type] = parts;
+    if (!address) return;
+    map.set(address.toUpperCase(), { registration: registration || "", country: country || "", type: type || "" });
+  });
+  return map;
+}
+
+function getCustomEntry(address) {
+  return customAircraftList.get((address || "").toUpperCase()) || null;
+}
+
+function handleSaveCustomList() {
+  const text = document.getElementById("custom-aircraft-textarea").value;
+  customAircraftList = parseCustomAircraftListText(text);
+  saveCustomAircraftListToStorage();
+
+  const statusBox = document.getElementById("custom-list-status");
+  statusBox.classList.remove("hidden", "error");
+  statusBox.textContent = `${customAircraftList.size} Flugzeug(e) in der Liste gespeichert.`;
+
+  applyAircraftFilterAndRender();
+}
+
+function restoreCustomAircraftListUi() {
+  loadCustomAircraftList();
+  if (customAircraftList.size) {
+    document.getElementById("custom-aircraft-textarea").value = [...customAircraftList.entries()]
+      .map(([addr, e]) => `${addr},${e.registration},${e.country},${e.type}`)
+      .join("\n");
+  }
+}
+
 let uploadedWaypoints = [];
+let uploadedCupTasks = [];
 
 // ---------- Distanzringe um ausgewaehltes Flugzeug ----------
 let selectedAircraftAddress = null;
@@ -842,6 +920,84 @@ function initCollapsiblePanels() {
 // ---------- SoaringSpot-Aufgaben ----------
 const TASK_COLORS = { 1: "#d92626", 2: "#2f6fb0", 3: "#1fa088" };
 let taskLayers = { 1: null, 2: null, 3: null };
+
+// ---------- SoaringSpot-Automatik: ein Link laedt alles ----------
+async function loadSoaringSpotToday() {
+  const urlInput = document.getElementById("soaringspot-auto-url");
+  const statusBox = document.getElementById("soaringspot-auto-status");
+  const url = urlInput.value.trim();
+  if (!url) return;
+
+  statusBox.classList.remove("hidden", "error");
+  statusBox.textContent = "Lade Aufgaben, Luftraum und Wendepunkte…";
+
+  const messages = [];
+
+  try {
+    const resp = await fetch("/api/soaringspot/today", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || "Konnte nicht geladen werden");
+
+    const okTasks = data.tasks.filter((t) => !t.error);
+    const failedTasks = data.tasks.filter((t) => t.error);
+
+    okTasks.slice(0, 3).forEach((t, i) => {
+      const slot = i + 1;
+      renderTask(slot, t.turnpoints);
+      saveTaskForToday(slot, t.task_url, t.turnpoints);
+      document.getElementById(`task-url-${slot}`).value = t.task_url;
+      messages.push(`Klasse "${t.class}": ${t.turnpoints.length} Punkte → Aufgabe ${slot}`);
+    });
+    if (okTasks.length > 3) {
+      messages.push(`${okTasks.length - 3} weitere Klasse(n) gefunden, aber nur 3 Farb-Slots verfügbar.`);
+    }
+    failedTasks.forEach((t) => {
+      messages.push(`Klasse "${t.class}": Fehler - ${t.error}`);
+    });
+
+    if (data.airspace_url) {
+      try {
+        const airspaceResp = await fetch("/api/airspace/parse-openair-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: data.airspace_url }),
+        });
+        const airspaceData = await airspaceResp.json();
+        if (airspaceResp.ok) {
+          lastLoadedAirspaces = airspaceData.airspaces;
+          renderAirspaces(lastLoadedAirspaces);
+          messages.push(`${airspaceData.airspaces.length} Lufträume automatisch geladen.`);
+        } else {
+          messages.push(`Luftraum: ${airspaceData.detail}`);
+        }
+      } catch (e) {
+        messages.push("Luftraum konnte nicht automatisch geladen werden.");
+      }
+    } else {
+      messages.push("Keine Luftraum-Datei auf der Downloads-Seite gefunden.");
+    }
+
+    if (data.cup_waypoints && data.cup_waypoints.length) {
+      uploadedWaypoints = data.cup_waypoints;
+      const select = document.getElementById("waypoint-select");
+      select.innerHTML = uploadedWaypoints
+        .map((w, i) => `<option value="${i}">${w.name}${w.code ? " (" + w.code + ")" : ""}</option>`)
+        .join("");
+      document.getElementById("waypoint-select-row").classList.remove("hidden");
+      messages.push(`${uploadedWaypoints.length} Wendepunkte für die Referenzpunkt-Auswahl geladen.`);
+    }
+
+    statusBox.classList.remove("error");
+    statusBox.textContent = messages.join(" | ");
+  } catch (err) {
+    statusBox.classList.add("error");
+    statusBox.textContent = messages.length ? messages.join(" | ") + " | " + err.message : err.message;
+  }
+}
 
 async function loadTask(slot) {
   const urlInput = document.getElementById(`task-url-${slot}`);
@@ -1186,6 +1342,7 @@ async function handleCupFileChange(e) {
   const file = e.target.files[0];
   const resultBox = document.getElementById("cup-upload-result");
   const selectRow = document.getElementById("waypoint-select-row");
+  const taskSelectRow = document.getElementById("cup-task-select-row");
   if (!file) return;
 
   const formData = new FormData();
@@ -1201,15 +1358,55 @@ async function handleCupFileChange(e) {
     select.innerHTML = uploadedWaypoints
       .map((w, i) => `<option value="${i}">${w.name}${w.code ? " (" + w.code + ")" : ""}</option>`)
       .join("");
-
     selectRow.classList.remove("hidden");
+
+    uploadedCupTasks = data.tasks || [];
+    if (uploadedCupTasks.length) {
+      const taskSelect = document.getElementById("cup-task-select");
+      taskSelect.innerHTML = uploadedCupTasks
+        .map((t, i) => `<option value="${i}">${t.name} (${t.turnpoints.length} Punkte)</option>`)
+        .join("");
+      taskSelectRow.classList.remove("hidden");
+    } else {
+      taskSelectRow.classList.add("hidden");
+    }
+
     resultBox.classList.remove("hidden", "error");
-    resultBox.textContent = `${uploadedWaypoints.length} Wendepunkte gefunden. Bitte auswählen und übernehmen.`;
+    let msg = `${uploadedWaypoints.length} Wendepunkte gefunden.`;
+    if (uploadedCupTasks.length) msg += ` ${uploadedCupTasks.length} Aufgabe(n) in der Datei gefunden.`;
+    resultBox.textContent = msg;
   } catch (err) {
     selectRow.classList.add("hidden");
+    taskSelectRow.classList.add("hidden");
     resultBox.classList.remove("hidden");
     resultBox.classList.add("error");
     resultBox.textContent = err.message;
+  }
+}
+
+function useCupTaskAsMapTask() {
+  const idx = Number(document.getElementById("cup-task-select").value);
+  const slot = Number(document.getElementById("cup-task-slot-select").value);
+  const task = uploadedCupTasks[idx];
+  if (!task) return;
+
+  renderTask(slot, task.turnpoints);
+
+  let msg = `${task.turnpoints.length} Wendepunkte aus CUP-Datei geladen ("${task.name}").`;
+  if (task.unresolved_names && task.unresolved_names.length) {
+    msg += ` Nicht gefunden: ${task.unresolved_names.join(", ")}`;
+  }
+  const statusBox = document.getElementById(`task-status-${slot}`);
+  statusBox.classList.remove("hidden", "error");
+  statusBox.textContent = msg;
+
+  // Falls in diesem Slot vorher eine SoaringSpot-URL aktiv war: leeren, sonst
+  // wuerde ein spaeteres Neuladen der Seite versuchen, die alte URL erneut zu laden.
+  document.getElementById(`task-url-${slot}`).value = "";
+  try {
+    localStorage.removeItem(`ogn_task_${slot}`);
+  } catch (err) {
+    // ignorieren
   }
 }
 
@@ -1261,6 +1458,13 @@ function init() {
   });
   document.getElementById("cup-file").addEventListener("change", handleCupFileChange);
   document.getElementById("btn-use-waypoint").addEventListener("click", useSelectedWaypointAsReference);
+  document.getElementById("btn-use-cup-task").addEventListener("click", useCupTaskAsMapTask);
+  document.getElementById("btn-save-custom-list").addEventListener("click", handleSaveCustomList);
+  document.getElementById("custom-list-only-toggle").addEventListener("change", (e) => {
+    customListOnly = e.target.checked;
+    applyAircraftFilterAndRender();
+  });
+  restoreCustomAircraftListUi();
 
   document.getElementById("btn-filter-all").addEventListener("click", () => setAllClassFilters(true));
   document.getElementById("btn-filter-none").addEventListener("click", () => setAllClassFilters(false));
@@ -1295,6 +1499,7 @@ function init() {
   document.querySelectorAll(".task-load-btn").forEach((btn) => {
     btn.addEventListener("click", () => loadTask(Number(btn.dataset.taskSlot)));
   });
+  document.getElementById("btn-load-soaringspot-today").addEventListener("click", loadSoaringSpotToday);
   document.querySelectorAll(".task-row input[type=text]").forEach((input) => {
     input.addEventListener("input", (e) => {
       if (!e.target.value.trim()) clearTask(Number(e.target.id.slice(-1)));
