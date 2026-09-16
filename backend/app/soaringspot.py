@@ -13,6 +13,7 @@ wie vom Nutzer gewuenscht.
 
 import re
 from datetime import date
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -82,10 +83,16 @@ def _find_cup_download_url(html: str, base_url: str) -> str:
     soup = BeautifulSoup(html, "lxml")
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        if href.lower().endswith(".cup"):
-            if href.startswith("http"):
-                return href
-            return base_url.rstrip("/") + "/" + href.lstrip("/")
+        # Bei manchen (neueren) Wettbewerben steht die Dateiendung nur im
+        # sichtbaren Linktext, nicht in der URL (z.B. eine anonyme ID wie
+        # /download-contest-file/5215-41180) - daher beides pruefen.
+        text = a.get_text(strip=True)
+        if href.lower().endswith(".cup") or text.lower().endswith(".cup"):
+            # urljoin loest sowohl absolute URLs als auch wurzel-relative
+            # Pfade (fuehrendes "/") als auch normale relative Pfade korrekt
+            # auf - eigenes String-Verketten hatte bei wurzel-relativen
+            # Pfaden faelschlich die Wettbewerbs-URL verdoppelt.
+            return urljoin(base_url + "/", href)
     raise ValueError(
         "Auf der Downloads-Seite des Wettbewerbs wurde keine CUP-Wendepunktdatei gefunden."
     )
@@ -94,13 +101,15 @@ def _find_cup_download_url(html: str, base_url: str) -> str:
 def _find_all_txt_download_urls(html: str, base_url: str) -> list[str]:
     """Luftraum-Dateien (OpenAir) werden auf SoaringSpot-Downloads-Seiten
     praktisch immer als .txt verlinkt - andere Dateitypen dort sind .cup,
-    .gpx, .wpz o.ae., .txt ist in der Praxis eindeutig genug."""
+    .gpx, .wpz o.ae., .txt ist in der Praxis eindeutig genug. Wie bei der
+    CUP-Datei wird sowohl die URL als auch der sichtbare Linktext geprueft."""
     soup = BeautifulSoup(html, "lxml")
     urls = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        if href.lower().endswith(".txt"):
-            urls.append(href if href.startswith("http") else base_url.rstrip("/") + "/" + href.lstrip("/"))
+        text = a.get_text(strip=True)
+        if href.lower().endswith(".txt") or text.lower().endswith(".txt"):
+            urls.append(urljoin(base_url + "/", href))
     return urls
 
 
@@ -126,7 +135,7 @@ def _find_task_links_for_date(html: str, target_date: str) -> dict[str, str]:
         if not m:
             continue
         klass = m.group(1)
-        url = href if href.startswith("http") else "https://www.soaringspot.com" + href
+        url = urljoin("https://www.soaringspot.com/", href)
         found.setdefault(klass, url)
     return found
 
@@ -202,11 +211,13 @@ def fetch_competition_today(any_competition_url: str) -> dict:
         except requests.RequestException:
             continue
 
+    no_tasks_note = None
     if not class_task_urls:
-        raise ValueError(
+        no_tasks_note = (
             f"Keine Aufgaben fuer den heutigen Tag ({today}) gefunden. Entweder ist heute "
             "kein Wettbewerbstag, die Aufgaben sind auf SoaringSpot noch nicht "
-            "veroeffentlicht, oder die Seitenstruktur weicht von der erwarteten ab."
+            "veroeffentlicht, oder die Seitenstruktur weicht von der erwarteten ab. "
+            "Luftraum und Wendepunkte wurden trotzdem geladen, falls verfuegbar."
         )
 
     tasks = []
@@ -217,6 +228,9 @@ def fetch_competition_today(any_competition_url: str) -> dict:
         except Exception as e:
             tasks.append({"class": klass, "task_url": task_url, "error": str(e)})
 
+    # Luftraum + Wendepunktdatei sind unabhaengig von veroeffentlichten Aufgaben
+    # nuetzlich - werden daher IMMER versucht, auch wenn oben keine Aufgabe
+    # gefunden wurde (z.B. am Anreisetag oder vor der Aufgabenbesprechung).
     airspace_url = None
     cup_waypoints = []
     try:
@@ -230,11 +244,12 @@ def fetch_competition_today(any_competition_url: str) -> dict:
         cup_url = _find_cup_download_url(downloads_resp.text, base)
         cup_waypoints = parse_cup(_fetch_and_decode(cup_url, headers))
     except Exception:
-        pass  # Airspace/CUP sind hier "nice to have" - Aufgaben sind das Wichtigste
+        pass  # Airspace/CUP sind hier "nice to have", kein harter Fehler
 
     return {
         "date": today,
         "tasks": tasks,
         "airspace_url": airspace_url,
         "cup_waypoints": cup_waypoints,
+        "note": no_tasks_note,
     }

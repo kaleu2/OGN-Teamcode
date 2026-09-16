@@ -205,6 +205,24 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Neu: Übermenü, eigene Flugzeugliste per Excel, Anzeige-Radius
+
+- **Übermenü** (⚙-Symbol oben in der Kopfzeile): steuert, welche Seitenleisten-
+  Bereiche überhaupt sichtbar sind, den Anzeige-Radius um Referenzpunkt ODER
+  eigene Position (Browser-Standort, per Häkchen anzeigbar), und die eigene
+  Flugzeugliste.
+- **Eigene Flugzeugliste:** jetzt per Excel-Upload (Spalten: FlarmID,
+  Wettbewerbskennzeichen, Land, Flugzeugtyp), direkt editierbare Tabelle,
+  Export als `userflarm.xml` (kompatibles Format) oder als Excel. Beim
+  Excel-Upload wird gefragt, ob die bestehende Liste ersetzt oder ergänzt
+  werden soll. Es wird ausschließlich das Wettbewerbskennzeichen überschrieben,
+  nie die Kennung.
+- **Bugfix SoaringSpot-Automatik:** Luftraum und Wendepunktdatei werden jetzt
+  auch geladen, wenn für den heutigen Tag noch keine Aufgabe veröffentlicht ist
+  (vorher brach der gesamte Import in diesem Fall ab).
+- **Segelflugzeug-Symbol:** eigene, glider-typische Silhouette (lange gerade
+  Tragflächen, schmaler Rumpf) statt der bisherigen gestreckten Motorflugzeug-Form.
+
 ## Neu: CUP-Aufgaben, eigene Flugzeugliste, SoaringSpot-Automatik
 
 - **Aufgaben direkt aus der CUP-Datei:** Beim CUP-Upload werden jetzt auch

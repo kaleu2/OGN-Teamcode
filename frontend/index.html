@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OGN Live-Tracker mit Teamcode</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<link rel="stylesheet" href="style.css?v=20" />
+<link rel="stylesheet" href="style.css?v=25" />
 </head>
 <body>
 <div id="app">
   <header id="topbar">
     <button id="btn-toggle-sidebar" class="sidebar-toggle-btn" title="Seitenleiste ein-/ausblenden">☰</button>
+    <button id="btn-open-supermenu" class="sidebar-toggle-btn" title="Einstellungen">⚙</button>
     <h1>OGN Live-Tracker</h1>
     <div id="feed-status" class="status">OGN-Feed: …</div>
     <div id="status" class="status">Verbinde…</div>
@@ -153,20 +154,6 @@
     </section>
 
     <section class="panel">
-      <h2 class="panel-toggle" data-panel-key="custom-list">Eigene Flugzeugliste <span class="panel-caret">▾</span></h2>
-      <div class="panel-body">
-        <p class="hint">Eine Zeile pro Flugzeug: FLARM-ID,Kennzeichen,Land (2 Buchstaben für die Flagge),Flugzeugtyp</p>
-        <textarea id="custom-aircraft-textarea" rows="5" placeholder="3EE4A1,D-1234,DE,ASH-31&#10;DDA1B2,D-5678,DE,LS8"></textarea>
-        <button id="btn-save-custom-list" class="toggle-btn">Liste speichern</button>
-        <div id="custom-list-status" class="result-box hidden"></div>
-        <label class="toggle-row">
-          <input type="checkbox" id="custom-list-only-toggle">
-          Nur Flugzeuge aus dieser Liste anzeigen
-        </label>
-      </div>
-    </section>
-
-    <section class="panel">
       <h2 class="panel-toggle" data-panel-key="aircraft">Flugzeuge in Sicht <span class="panel-caret">▾</span></h2>
       <div class="panel-body">
         <div id="aircraft-count">0 Flugzeuge</div>
@@ -182,8 +169,69 @@
   <main id="map"></main>
 </div>
 
+<div id="supermenu-overlay" class="supermenu-overlay hidden">
+  <div class="supermenu-modal">
+    <div class="supermenu-header">
+      <h2>Einstellungen</h2>
+      <button id="btn-close-supermenu" class="link-btn">✕ Schließen</button>
+    </div>
+    <div class="supermenu-body">
+
+      <section class="supermenu-section">
+        <h3>Sichtbare Bereiche in der Seitenleiste</h3>
+        <div id="panel-visibility-list"></div>
+      </section>
+
+      <section class="supermenu-section">
+        <h3>Anzeige-Radius</h3>
+        <label class="supermenu-inline-label">
+          Radius (km):
+          <input type="number" id="display-radius-input" min="5" max="500" value="300">
+        </label>
+        <label class="toggle-row">
+          <input type="radio" name="radius-center" id="radius-center-reference" value="reference" checked>
+          Zentrum: Referenzpunkt
+        </label>
+        <label class="toggle-row">
+          <input type="radio" name="radius-center" id="radius-center-own" value="own">
+          Zentrum: eigene Position
+        </label>
+        <label class="toggle-row">
+          <input type="checkbox" id="show-own-position-toggle">
+          Eigene Position auf der Karte anzeigen
+        </label>
+      </section>
+
+      <section class="supermenu-section">
+        <h3>Eigene Flugzeugliste (Wettbewerbskennzeichen)</h3>
+        <p class="hint">
+          Excel-Spalten in dieser Reihenfolge: <b>FlarmID, Wettbewerbskennzeichen, Land (2 Buchstaben), Flugzeugtyp</b>.
+          Es wird ausschließlich das Wettbewerbskennzeichen überschrieben, nicht die Kennung.
+        </p>
+        <input type="file" id="flarm-excel-upload" accept=".xlsx,.xls">
+        <div id="flarm-list-status" class="result-box hidden"></div>
+
+        <label class="toggle-row">
+          <input type="checkbox" id="custom-list-only-toggle">
+          Nur Flugzeuge aus dieser Liste anzeigen
+        </label>
+
+        <div id="flarm-list-table-container"></div>
+        <button id="btn-add-flarm-row" class="link-btn">+ Zeile hinzufügen</button>
+
+        <div class="flarm-export-row">
+          <button id="btn-export-userflarm">Als userflarm.xml exportieren</button>
+          <button id="btn-export-flarm-excel">Als Excel exportieren</button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="teamcode.js?v=20"></script>
-<script src="app.js?v=20"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="teamcode.js?v=25"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>

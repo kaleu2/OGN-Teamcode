@@ -516,6 +516,129 @@ html, body {
   margin-bottom: 6px;
 }
 
+.supermenu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.supermenu-overlay.hidden {
+  display: none;
+}
+
+.supermenu-modal {
+  background: white;
+  border-radius: 10px;
+  width: min(560px, 92vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.supermenu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e0e4ea;
+}
+
+.supermenu-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.supermenu-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+}
+
+.supermenu-section {
+  margin-bottom: 22px;
+}
+
+.supermenu-section h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #4b5a6b;
+  margin: 0 0 10px 0;
+}
+
+.supermenu-inline-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.supermenu-inline-label input[type="number"] {
+  width: 80px;
+  padding: 5px;
+  border: 1px solid #c7cfd9;
+  border-radius: 5px;
+}
+
+.flarm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.flarm-table th {
+  text-align: left;
+  font-size: 11px;
+  color: #4b5a6b;
+  padding: 4px;
+  border-bottom: 1px solid #e0e4ea;
+}
+
+.flarm-table td {
+  padding: 2px 4px;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.flarm-table input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px;
+  border: 1px solid #d7dde5;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.flarm-delete-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.flarm-export-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.flarm-export-row button {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: #2f6fb0;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
 .popup-teamcode {
   font-weight: bold;
   font-size: 15px;

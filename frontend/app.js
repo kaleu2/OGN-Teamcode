@@ -7,8 +7,11 @@ const FEED_STATUS_REFRESH_MS = 5000;
 const PLANE_PATH =
   "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2.5 1.5V22l4-1 4 1v-1.5L13 19v-5.5l8 2.5z";
 
+const GLIDER_PATH =
+  "M12,1 L13,9 L23,11 L23,13 L13,15 L13,20 L15.5,22 L15.5,23 L8.5,23 L8.5,22 L11,20 L11,15 L1,13 L1,11 L11,9 Z";
+
 const AIRCRAFT_SVG = {
-  1: `<g transform="translate(12 12) scale(1.35 1) translate(-12 -12)"><path d="${PLANE_PATH}"/></g>`, // Segelflugzeug: breiter
+  1: `<path d="${GLIDER_PATH}"/>`, // Segelflugzeug: eigene Form, lange gerade Tragflaechen, schmaler Rumpf
   2: `<path d="${PLANE_PATH}"/>`, // Schleppflugzeug
   3: `<circle cx="12" cy="15" r="3"/><rect x="2" y="11" width="20" height="2"/><rect x="11" y="2" width="2" height="10"/>`, // Hubschrauber
   4: `<path d="M2 11 A10 9 0 0 1 22 11 L17 11 L15.5 21 L13.5 11 L10.5 11 L8.5 21 L7 11 Z"/>`, // Fallschirm
@@ -262,9 +265,9 @@ function aircraftIconHtml(ac) {
   // einen Blick auffallen (das sind meistens die relevanten Ziele hier).
   // Inline-Style statt HTML-Attribut, da die CSS-Datei sonst eine feste
   // Groesse erzwingt und ein blosses width/height-Attribut ueberstimmt.
-  const symbolBoxStyle = isGlider ? "width:32px;height:32px;" : "";
-  const svgSizeStyle = isGlider ? "width:28px;height:28px;" : "";
-  const strokeAttr = isGlider ? ' stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"' : "";
+  const symbolBoxStyle = isGlider ? "width:30px;height:30px;" : "";
+  const svgSizeStyle = isGlider ? "width:26px;height:26px;" : "";
+  const strokeAttr = isGlider ? ' stroke="currentColor" stroke-width="0.6" stroke-linejoin="round"' : "";
   const labelHtml = label
     ? `<div class="ac-label" style="color:${style.color}; border:1px solid ${style.color};">${label}</div>`
     : "";
@@ -354,6 +357,7 @@ function applyAircraftFilterAndRender() {
   const list = lastAircraftList.filter((ac) => {
     if (!activeClassFilters.has(ac.aircraft_type_code ?? 0)) return false;
     if (customListOnly && !getCustomEntry(ac.address)) return false;
+    if (!withinDisplayRadius(ac)) return false;
     return true;
   });
   const seen = new Set();
@@ -723,9 +727,10 @@ function syncLinkedTimeline(sourceKey) {
   setWeatherFrame(otherKey, closestTimeIndex(other.times, targetMs));
 }
 
-// ---------- Eigene Flugzeugliste (FLARM-ID -> Kennzeichen/Land/Typ) ----------
+// ---------- Eigene Flugzeugliste (FLARM-ID -> Wettbewerbskennzeichen/Land/Typ) ----------
 let customAircraftList = new Map(); // address (Grossbuchstaben) -> {registration, country, type}
 let customListOnly = false;
+let pendingExcelRows = null; // Zwischenspeicher bis Nutzer "Ersetzen"/"Hinzufügen" waehlt
 
 function loadCustomAircraftList() {
   try {
@@ -757,42 +762,380 @@ function countryFlagEmoji(countryCode) {
   return String.fromCodePoint(...codePoints);
 }
 
-function parseCustomAircraftListText(text) {
-  const map = new Map();
-  text.split("\n").forEach((line) => {
-    line = line.trim();
-    if (!line || line.startsWith("#")) return;
-    const parts = line.split(",").map((p) => p.trim());
-    const [address, registration, country, type] = parts;
-    if (!address) return;
-    map.set(address.toUpperCase(), { registration: registration || "", country: country || "", type: type || "" });
-  });
-  return map;
-}
-
 function getCustomEntry(address) {
   return customAircraftList.get((address || "").toUpperCase()) || null;
 }
 
-function handleSaveCustomList() {
-  const text = document.getElementById("custom-aircraft-textarea").value;
-  customAircraftList = parseCustomAircraftListText(text);
-  saveCustomAircraftListToStorage();
+// ---- Editierbare Tabelle im Uebermenue ----
+function renderFlarmListTable() {
+  const container = document.getElementById("flarm-list-table-container");
+  if (!container) return;
+  const rows = [...customAircraftList.entries()];
 
-  const statusBox = document.getElementById("custom-list-status");
-  statusBox.classList.remove("hidden", "error");
-  statusBox.textContent = `${customAircraftList.size} Flugzeug(e) in der Liste gespeichert.`;
+  if (!rows.length) {
+    container.innerHTML = '<p class="hint">Noch keine Einträge. Excel hochladen oder unten eine Zeile hinzufügen.</p>';
+    return;
+  }
 
-  applyAircraftFilterAndRender();
+  container.innerHTML = `
+    <table class="flarm-table">
+      <thead>
+        <tr><th>FLARM-ID</th><th>Wettbewerbskennzeichen</th><th>Land</th><th>Typ</th><th></th></tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map(
+            ([address, e], i) => `
+          <tr data-idx="${i}">
+            <td><input type="text" class="flarm-cell" data-field="address" value="${address}"></td>
+            <td><input type="text" class="flarm-cell" data-field="registration" value="${e.registration || ""}"></td>
+            <td><input type="text" class="flarm-cell" data-field="country" value="${e.country || ""}" maxlength="2"></td>
+            <td><input type="text" class="flarm-cell" data-field="type" value="${e.type || ""}"></td>
+            <td><button class="flarm-delete-btn" data-idx="${i}" title="Löschen">🗑</button></td>
+          </tr>`
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+
+  container.querySelectorAll(".flarm-cell").forEach((input) => {
+    // Enter loest bei einem einzelnen Textfeld ohne Formular kein "change"
+    // aus (das passiert normalerweise erst beim Wegklicken/Tab) - daher
+    // hier gezielt per Enter das Feld "bluren", damit gespeichert wird.
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") input.blur();
+    });
+
+    input.addEventListener("change", () => {
+      const idx = Number(input.closest("tr").dataset.idx);
+      const field = input.dataset.field;
+      const newValue = field === "address" ? input.value.trim().toUpperCase() : input.value.trim();
+      if (field === "address" && !newValue) return; // FLARM-ID darf nicht leer werden
+
+      // Bewusst NICHT ueber Map.delete()+Map.set() auf der bestehenden Map
+      // arbeiten (das verschiebt den Eintrag beim Adressaendern ans Ende
+      // und fuehrte zu Verwirrung/Fehlern) - stattdessen die komplette
+      // Liste anhand der aktuell sichtbaren Zeilen sauber neu aufbauen,
+      // Reihenfolge bleibt dabei erhalten.
+      const currentRows = [...customAircraftList.entries()].map(([addr, e]) => [addr, { ...e }]);
+      if (field === "address") {
+        currentRows[idx][0] = newValue;
+      } else {
+        currentRows[idx][1][field] = newValue;
+      }
+      customAircraftList = new Map(currentRows);
+
+      saveCustomAircraftListToStorage();
+      if (field === "address") renderFlarmListTable(); // Zeilen-Referenzen (data-idx) neu aufbauen
+      applyAircraftFilterAndRender();
+    });
+  });
+
+  container.querySelectorAll(".flarm-delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.dataset.idx);
+      const [address] = rows[idx];
+      customAircraftList.delete(address);
+      saveCustomAircraftListToStorage();
+      renderFlarmListTable();
+      applyAircraftFilterAndRender();
+    });
+  });
 }
 
-function restoreCustomAircraftListUi() {
-  loadCustomAircraftList();
-  if (customAircraftList.size) {
-    document.getElementById("custom-aircraft-textarea").value = [...customAircraftList.entries()]
-      .map(([addr, e]) => `${addr},${e.registration},${e.country},${e.type}`)
-      .join("\n");
+function addFlarmRow() {
+  let n = 1;
+  let key = `NEU${n}`;
+  while (customAircraftList.has(key)) {
+    n++;
+    key = `NEU${n}`;
   }
+  customAircraftList.set(key, { registration: "", country: "", type: "" });
+  saveCustomAircraftListToStorage();
+  renderFlarmListTable();
+}
+
+// ---- Excel-Import (SheetJS) ----
+async function handleFlarmExcelUpload(e) {
+  const file = e.target.files[0];
+  const statusBox = document.getElementById("flarm-list-status");
+  if (!file) return;
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array" });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+    // Kopfzeile erkennen und ueberspringen (z.B. "FlarmID" in der ersten Zelle)
+    let dataRows = rows;
+    if (rows.length && typeof rows[0][0] === "string" && rows[0][0].toLowerCase().includes("flarm")) {
+      dataRows = rows.slice(1);
+    }
+
+    pendingExcelRows = dataRows
+      .filter((r) => r && r[0])
+      .map((r) => ({
+        address: String(r[0]).trim().toUpperCase(),
+        registration: r[1] != null ? String(r[1]).trim() : "",
+        country: r[2] != null ? String(r[2]).trim() : "",
+        type: r[3] != null ? String(r[3]).trim() : "",
+      }));
+
+    statusBox.classList.remove("hidden", "error");
+    statusBox.innerHTML = `
+      ${pendingExcelRows.length} Zeile(n) in der Excel-Datei gefunden.
+      Bestehende Liste (${customAircraftList.size} Einträge) ersetzen oder ergänzen?
+      <div style="margin-top:8px; display:flex; gap:8px;">
+        <button id="btn-excel-replace">Ersetzen</button>
+        <button id="btn-excel-merge">Hinzufügen</button>
+      </div>
+    `;
+    document.getElementById("btn-excel-replace").addEventListener("click", () => applyPendingExcelRows(true));
+    document.getElementById("btn-excel-merge").addEventListener("click", () => applyPendingExcelRows(false));
+  } catch (err) {
+    statusBox.classList.remove("hidden");
+    statusBox.classList.add("error");
+    statusBox.textContent = "Konnte Excel-Datei nicht lesen: " + err.message;
+  }
+}
+
+function applyPendingExcelRows(replace) {
+  if (!pendingExcelRows) return;
+  if (replace) customAircraftList = new Map();
+  pendingExcelRows.forEach((r) => {
+    customAircraftList.set(r.address, { registration: r.registration, country: r.country, type: r.type });
+  });
+  const count = pendingExcelRows.length;
+  pendingExcelRows = null;
+  saveCustomAircraftListToStorage();
+  renderFlarmListTable();
+  applyAircraftFilterAndRender();
+
+  const statusBox = document.getElementById("flarm-list-status");
+  statusBox.classList.remove("error");
+  statusBox.textContent = `${replace ? "Ersetzt" : "Ergänzt"}: ${count} Zeile(n) verarbeitet, Liste hat jetzt ${customAircraftList.size} Einträge.`;
+}
+
+// ---- Export ----
+function escapeXml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function downloadTextFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportUserFlarmXml() {
+  const lines = ['<?xml version="1.0" encoding="UTF-8" ?>', "<FLARMNET>"];
+  for (const [address, e] of customAircraftList.entries()) {
+    if (!e.registration) continue; // ohne Wettbewerbskennzeichen kein sinnvoller Eintrag
+    lines.push(`    <FLARMDATA FlarmID="${escapeXml(address)}" user="1">`);
+    lines.push(`        <COMPID>${escapeXml(e.registration)}</COMPID>`);
+    lines.push(`        <FREQUENCY>0.000</FREQUENCY>`);
+    lines.push(`    </FLARMDATA>`);
+  }
+  lines.push("</FLARMNET>");
+  downloadTextFile("userflarm.xml", lines.join("\n"), "application/xml");
+}
+
+function exportFlarmExcel() {
+  const rows = [["FlarmID", "Wettbewerbskennzeichen", "Land", "Flugzeugtyp"]];
+  for (const [address, e] of customAircraftList.entries()) {
+    rows.push([address, e.registration || "", e.country || "", e.type || ""]);
+  }
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Flugzeuge");
+  XLSX.writeFile(workbook, "eigene-flugzeugliste.xlsx");
+}
+
+function initCustomAircraftListUi() {
+  loadCustomAircraftList();
+  renderFlarmListTable();
+}
+
+// ---------- Uebermenue: Sichtbarkeit der Seitenleisten-Panels ----------
+const PANEL_VISIBILITY_LABELS = {
+  reference: "Referenzpunkt",
+  teamcode: "Teamcode",
+  soaringspot: "SoaringSpot-Aufgaben",
+  airspace: "Luftraum",
+  weather: "Wetter (Radar/Satellit)",
+  aircraft: "Flugzeuge in Sicht",
+};
+
+let panelVisibility = {}; // key -> false, wenn ausgeblendet (Standard: alles sichtbar)
+
+function loadPanelVisibility() {
+  try {
+    panelVisibility = JSON.parse(localStorage.getItem("ogn_panel_visibility") || "{}");
+  } catch (e) {
+    panelVisibility = {};
+  }
+}
+
+function savePanelVisibility() {
+  try {
+    localStorage.setItem("ogn_panel_visibility", JSON.stringify(panelVisibility));
+  } catch (e) {
+    // ignorieren
+  }
+}
+
+function applyPanelVisibility() {
+  document.querySelectorAll(".panel-toggle").forEach((header) => {
+    const key = header.dataset.panelKey;
+    const panel = header.closest(".panel");
+    panel.style.display = panelVisibility[key] === false ? "none" : "";
+  });
+}
+
+function renderPanelVisibilityList() {
+  const container = document.getElementById("panel-visibility-list");
+  container.innerHTML = Object.entries(PANEL_VISIBILITY_LABELS)
+    .map(
+      ([key, label]) => `
+      <label class="toggle-row">
+        <input type="checkbox" class="panel-visibility-checkbox" data-key="${key}" ${
+        panelVisibility[key] === false ? "" : "checked"
+      }>
+        ${label}
+      </label>`
+    )
+    .join("");
+
+  container.querySelectorAll(".panel-visibility-checkbox").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      panelVisibility[cb.dataset.key] = cb.checked;
+      savePanelVisibility();
+      applyPanelVisibility();
+    });
+  });
+}
+
+// ---------- Uebermenue: Anzeige-Radius & eigene Position ----------
+let displayRadiusKm = 300;
+let radiusCenterMode = "reference"; // "reference" | "own"
+let ownPosition = null; // {lat, lon}
+let showOwnPosition = false;
+let ownPositionMarker = null;
+let ownPositionWatchId = null;
+
+function loadDisplaySettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem("ogn_display_settings") || "{}");
+    if (s.radiusKm) displayRadiusKm = s.radiusKm;
+    if (s.centerMode) radiusCenterMode = s.centerMode;
+    if (s.showOwnPosition) showOwnPosition = true;
+  } catch (e) {
+    // Standardwerte behalten
+  }
+}
+
+function saveDisplaySettings() {
+  try {
+    localStorage.setItem(
+      "ogn_display_settings",
+      JSON.stringify({ radiusKm: displayRadiusKm, centerMode: radiusCenterMode, showOwnPosition })
+    );
+  } catch (e) {
+    // ignorieren
+  }
+}
+
+function toggleOwnPositionTracking(enabled) {
+  showOwnPosition = enabled;
+  saveDisplaySettings();
+
+  if (enabled) {
+    if (!navigator.geolocation) {
+      alert("Dieser Browser unterstützt keine Standortermittlung.");
+      document.getElementById("show-own-position-toggle").checked = false;
+      showOwnPosition = false;
+      return;
+    }
+    ownPositionWatchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        ownPosition = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        updateOwnPositionMarker();
+        applyAircraftFilterAndRender();
+      },
+      (err) => console.error("Standort-Fehler:", err),
+      { enableHighAccuracy: true, maximumAge: 10000 }
+    );
+  } else {
+    if (ownPositionWatchId != null) navigator.geolocation.clearWatch(ownPositionWatchId);
+    ownPositionWatchId = null;
+    if (ownPositionMarker) {
+      map.removeLayer(ownPositionMarker);
+      ownPositionMarker = null;
+    }
+    applyAircraftFilterAndRender();
+  }
+}
+
+function updateOwnPositionMarker() {
+  if (!ownPosition) return;
+  if (!ownPositionMarker) {
+    ownPositionMarker = L.circleMarker([ownPosition.lat, ownPosition.lon], {
+      radius: 5,
+      color: "#66ccff",
+      fillColor: "#66ccff",
+      fillOpacity: 0.9,
+      weight: 1,
+    })
+      .bindTooltip("Meine Position")
+      .addTo(map);
+  } else {
+    ownPositionMarker.setLatLng([ownPosition.lat, ownPosition.lon]);
+  }
+}
+
+function withinDisplayRadius(ac) {
+  const center = radiusCenterMode === "own" && ownPosition ? ownPosition : reference;
+  if (!center) return true; // kein Zentrum bekannt -> nicht herausfiltern
+  const d = tcBearingDistance(center.lat, center.lon, ac.latitude, ac.longitude).distanceKm;
+  return d <= displayRadiusKm;
+}
+
+// ---------- Wendepunkte aus einer geladenen Datei als kleine Punkte anzeigen ----------
+let waypointMarkersLayer = null;
+
+function renderWaypointMarkers(waypoints) {
+  if (waypointMarkersLayer) {
+    map.removeLayer(waypointMarkersLayer);
+    waypointMarkersLayer = null;
+  }
+  if (!waypoints || !waypoints.length) return;
+
+  const group = L.layerGroup();
+  waypoints.forEach((w) => {
+    L.circleMarker([w.lat, w.lon], {
+      radius: 3,
+      color: "#0a1f6b",
+      fillColor: "#0a1f6b",
+      fillOpacity: 1,
+      weight: 1,
+    })
+      .bindTooltip(w.name)
+      .addTo(group);
+  });
+  group.addTo(map);
+  waypointMarkersLayer = group;
 }
 
 let uploadedWaypoints = [];
@@ -945,6 +1288,8 @@ async function loadSoaringSpotToday() {
     const okTasks = data.tasks.filter((t) => !t.error);
     const failedTasks = data.tasks.filter((t) => t.error);
 
+    if (data.note) messages.push(data.note);
+
     okTasks.slice(0, 3).forEach((t, i) => {
       const slot = i + 1;
       renderTask(slot, t.turnpoints);
@@ -988,6 +1333,7 @@ async function loadSoaringSpotToday() {
         .map((w, i) => `<option value="${i}">${w.name}${w.code ? " (" + w.code + ")" : ""}</option>`)
         .join("");
       document.getElementById("waypoint-select-row").classList.remove("hidden");
+      renderWaypointMarkers(uploadedWaypoints);
       messages.push(`${uploadedWaypoints.length} Wendepunkte für die Referenzpunkt-Auswahl geladen.`);
     }
 
@@ -1359,6 +1705,7 @@ async function handleCupFileChange(e) {
       .map((w, i) => `<option value="${i}">${w.name}${w.code ? " (" + w.code + ")" : ""}</option>`)
       .join("");
     selectRow.classList.remove("hidden");
+    renderWaypointMarkers(uploadedWaypoints);
 
     uploadedCupTasks = data.tasks || [];
     if (uploadedCupTasks.length) {
@@ -1446,6 +1793,10 @@ function init() {
   initMap();
   addRangeRingsControl();
   initCollapsiblePanels();
+  loadPanelVisibility();
+  applyPanelVisibility();
+  renderPanelVisibilityList();
+  loadDisplaySettings();
   loadReference().then(fetchAircraft);
   setInterval(fetchAircraft, AIRCRAFT_REFRESH_MS);
   fetchFeedStatus();
@@ -1459,12 +1810,15 @@ function init() {
   document.getElementById("cup-file").addEventListener("change", handleCupFileChange);
   document.getElementById("btn-use-waypoint").addEventListener("click", useSelectedWaypointAsReference);
   document.getElementById("btn-use-cup-task").addEventListener("click", useCupTaskAsMapTask);
-  document.getElementById("btn-save-custom-list").addEventListener("click", handleSaveCustomList);
   document.getElementById("custom-list-only-toggle").addEventListener("change", (e) => {
     customListOnly = e.target.checked;
     applyAircraftFilterAndRender();
   });
-  restoreCustomAircraftListUi();
+  document.getElementById("flarm-excel-upload").addEventListener("change", handleFlarmExcelUpload);
+  document.getElementById("btn-add-flarm-row").addEventListener("click", addFlarmRow);
+  document.getElementById("btn-export-userflarm").addEventListener("click", exportUserFlarmXml);
+  document.getElementById("btn-export-flarm-excel").addEventListener("click", exportFlarmExcel);
+  initCustomAircraftListUi();
 
   document.getElementById("btn-filter-all").addEventListener("click", () => setAllClassFilters(true));
   document.getElementById("btn-filter-none").addEventListener("click", () => setAllClassFilters(false));
@@ -1523,6 +1877,42 @@ function init() {
     const reenableBtn = e.target.closest(".airspace-reenable-btn");
     if (reenableBtn) reenableAirspace(reenableBtn.dataset.key);
   });
+
+  // ---- Uebermenue ----
+  document.getElementById("btn-open-supermenu").addEventListener("click", () => {
+    document.getElementById("supermenu-overlay").classList.remove("hidden");
+  });
+  document.getElementById("btn-close-supermenu").addEventListener("click", () => {
+    document.getElementById("supermenu-overlay").classList.add("hidden");
+  });
+  document.getElementById("supermenu-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "supermenu-overlay") e.target.classList.add("hidden");
+  });
+
+  const radiusInput = document.getElementById("display-radius-input");
+  radiusInput.value = displayRadiusKm;
+  radiusInput.addEventListener("change", (e) => {
+    const v = Number(e.target.value);
+    if (v > 0) {
+      displayRadiusKm = v;
+      saveDisplaySettings();
+      applyAircraftFilterAndRender();
+    }
+  });
+
+  document.getElementById(radiusCenterMode === "own" ? "radius-center-own" : "radius-center-reference").checked = true;
+  document.querySelectorAll('input[name="radius-center"]').forEach((radio) => {
+    radio.addEventListener("change", (e) => {
+      radiusCenterMode = e.target.value;
+      saveDisplaySettings();
+      applyAircraftFilterAndRender();
+    });
+  });
+
+  const ownPosToggle = document.getElementById("show-own-position-toggle");
+  ownPosToggle.checked = showOwnPosition;
+  ownPosToggle.addEventListener("change", (e) => toggleOwnPositionTracking(e.target.checked));
+  if (showOwnPosition) toggleOwnPositionTracking(true);
 }
 
 document.addEventListener("DOMContentLoaded", init);
