@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OGN Live-Tracker mit Teamcode</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-<link rel="stylesheet" href="style.css?v=25" />
+<link rel="stylesheet" href="style.css?v=26" />
 </head>
 <body>
 <div id="app">
@@ -229,9 +229,28 @@
   </div>
 </div>
 
+<div id="inactive-airspace-overlay" class="supermenu-overlay hidden">
+  <div class="supermenu-modal">
+    <div class="supermenu-header">
+      <h2>Inaktive Lufträume von SoaringSpot</h2>
+      <button id="btn-close-inactive-airspace" class="link-btn">✕ Schließen</button>
+    </div>
+    <div class="supermenu-body">
+      <p class="hint">
+        SoaringSpot weist für diese Aufgabe die unten genannten Lufträume als inaktiv aus.
+        Sollen sie zur Liste der für heute deaktivierten Lufträume hinzugefügt werden?
+      </p>
+      <div id="inactive-airspace-list"></div>
+      <div class="flarm-export-row">
+        <button id="btn-apply-inactive-airspaces">Ausgewählte deaktivieren</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="teamcode.js?v=25"></script>
-<script src="app.js?v=25"></script>
+<script src="teamcode.js?v=26"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

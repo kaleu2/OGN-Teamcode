@@ -122,6 +122,25 @@ def _fetch_and_decode(url: str, headers: dict) -> str:
         return resp.content.decode("latin-1", errors="replace")
 
 
+def _extract_inactive_airspaces(html: str) -> list[str]:
+    """Liest die Zeile "Inactive airspaces: A, B, C" von der Task-Seite aus,
+    falls SoaringSpot fuer den Tag welche ausweist (typischerweise zeitlich
+    begrenzte Sperrgebiete/Fallschirmzonen, z.B. "EDR96 Romrod MON-FRI").
+    Nicht jede Aufgabe hat solche Eintraege - dann leere Liste.
+
+    Ueber get_text() statt eines festen Tag-Patterns, weil wir die konkrete
+    HTML-Struktur dieser Zeile nicht gegen die echte Seite verifizieren
+    konnten (Netzwerk-Restriktion der Entwicklungsumgebung) - das ist robuster
+    gegenueber einem <strong>/<span>/<p>-Wechsel als ein fest angenommenes Tag.
+    """
+    soup = BeautifulSoup(html, "lxml")
+    text = soup.get_text("\n")
+    m = re.search(r"Inactive airspaces:\s*(.+)", text)
+    if not m:
+        return []
+    return [name.strip() for name in m.group(1).split(",") if name.strip()]
+
+
 def _find_task_links_for_date(html: str, target_date: str) -> dict[str, str]:
     """Findet Links der Form '/tasks/<klasse>/task-N-on-<datum>' und liefert
     {klasse: absolute_url} - ein Eintrag pro gefundener Klasse fuer das
@@ -146,6 +165,7 @@ def fetch_task(task_url: str) -> dict:
     resp = requests.get(task_url, headers=headers, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     turnpoints = _extract_turnpoints(resp.text)
+    inactive_airspaces = _extract_inactive_airspaces(resp.text)
 
     base = _competition_base_url(task_url)
     downloads_resp = requests.get(base + "/downloads", headers=headers, timeout=REQUEST_TIMEOUT)
@@ -180,7 +200,11 @@ def fetch_task(task_url: str) -> dict:
             "Wendepunktdatei des Wettbewerbs wiedergefunden werden."
         )
 
-    return {"turnpoints": resolved, "unresolved_names": unresolved}
+    return {
+        "turnpoints": resolved,
+        "unresolved_names": unresolved,
+        "inactive_airspaces": inactive_airspaces,
+    }
 
 
 def fetch_competition_today(any_competition_url: str) -> dict:

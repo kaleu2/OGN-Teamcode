@@ -8,7 +8,7 @@ const PLANE_PATH =
   "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2.5 1.5V22l4-1 4 1v-1.5L13 19v-5.5l8 2.5z";
 
 const GLIDER_PATH =
-  "M12,1 L13,9 L23,11 L23,13 L13,15 L13,20 L15.5,22 L15.5,23 L8.5,23 L8.5,22 L11,20 L11,15 L1,13 L1,11 L11,9 Z";
+  "M12,1 L13,8 L23,10 L23,13 L13,13 L13,20 L15.5,22 L15.5,23 L8.5,23 L8.5,22 L11,20 L11,13 L1,13 L1,10 L11,8 Z";
 
 const AIRCRAFT_SVG = {
   1: `<path d="${GLIDER_PATH}"/>`, // Segelflugzeug: eigene Form, lange gerade Tragflaechen, schmaler Rumpf
@@ -1337,6 +1337,11 @@ async function loadSoaringSpotToday() {
       messages.push(`${uploadedWaypoints.length} Wendepunkte für die Referenzpunkt-Auswahl geladen.`);
     }
 
+    const inactiveNames = Array.from(new Set(okTasks.flatMap((t) => t.inactive_airspaces || [])));
+    if (inactiveNames.length && lastLoadedAirspaces.length) {
+      openInactiveAirspacePrompt(inactiveNames);
+    }
+
     statusBox.classList.remove("error");
     statusBox.textContent = messages.join(" | ");
   } catch (err) {
@@ -1371,6 +1376,10 @@ async function loadTask(slot) {
       msg += ` Nicht gefunden: ${data.unresolved_names.join(", ")}`;
     }
     statusBox.textContent = msg;
+
+    if (data.inactive_airspaces && data.inactive_airspaces.length && lastLoadedAirspaces.length) {
+      openInactiveAirspacePrompt(data.inactive_airspaces);
+    }
   } catch (err) {
     statusBox.classList.add("error");
     statusBox.textContent = err.message;
@@ -1709,6 +1718,93 @@ function renderDisabledAirspaceList() {
     .join("");
 }
 
+// ---------- SoaringSpot "Inactive airspaces" Abgleich ----------
+// SeeYou erzeugt diese Liste auf SoaringSpot anhand der Luftraum-Bezeichnungen
+// aus der Luftraumdatei selbst - Namen sollten also exakt oder nahezu exakt
+// uebereinstimmen. Nur bei mehrfach vergebenen oder gar nicht gefundenen
+// Namen muss nachgefragt werden.
+function matchInactiveAirspaceNames(names) {
+  const loaded = lastLoadedAirspaces.map((a, idx) => ({ a, key: airspaceKey(a, idx) }));
+  return names
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .map((name) => ({
+      name,
+      matches: loaded.filter(({ a }) => (a.name || "").trim().toLowerCase() === name.toLowerCase()),
+    }));
+}
+
+function airspaceOptionLabel(a) {
+  return `${a.name || "(ohne Namen)"} (${a.airspace_class}, ${a.floor.label}–${a.ceiling.label})`;
+}
+
+function openInactiveAirspacePrompt(names) {
+  if (!lastLoadedAirspaces.length || !names || !names.length) return;
+  const matchResults = matchInactiveAirspaceNames(names);
+  if (!matchResults.length) return;
+
+  const loaded = lastLoadedAirspaces.map((a, idx) => ({ a, key: airspaceKey(a, idx) }));
+  const allOptionsHtml = loaded
+    .map(({ a, key }) => `<option value="${key}">${airspaceOptionLabel(a)}</option>`)
+    .join("");
+
+  const html = matchResults
+    .map(({ name, matches }) => {
+      if (matches.length === 1) {
+        const { a, key } = matches[0];
+        return `
+          <div class="inactive-airspace-row">
+            <label class="toggle-row">
+              <input type="checkbox" class="inactive-airspace-checkbox" data-key="${key}" checked>
+              <b>${name}</b> → ${airspaceOptionLabel(a)}
+            </label>
+          </div>`;
+      }
+      if (matches.length === 0) {
+        return `
+          <div class="inactive-airspace-row">
+            <div><b>${name}</b> – kein geladener Luftraum mit diesem Namen gefunden.</div>
+            <label class="supermenu-inline-label">
+              Trotzdem zuordnen:
+              <select class="inactive-airspace-manual-select">
+                <option value="">– überspringen –</option>
+                ${allOptionsHtml}
+              </select>
+            </label>
+          </div>`;
+      }
+      const options = matches
+        .map(
+          ({ a, key }) => `
+          <label class="toggle-row">
+            <input type="checkbox" class="inactive-airspace-checkbox" data-key="${key}">
+            ${airspaceOptionLabel(a)}
+          </label>`
+        )
+        .join("");
+      return `
+        <div class="inactive-airspace-row">
+          <div><b>${name}</b> – ${matches.length} gleichnamige Lufträume gefunden, bitte auswählen (keinen ankreuzen zum Überspringen):</div>
+          ${options}
+        </div>`;
+    })
+    .join("<hr>");
+
+  document.getElementById("inactive-airspace-list").innerHTML = html;
+  document.getElementById("inactive-airspace-overlay").classList.remove("hidden");
+}
+
+function applyInactiveAirspaceSelection() {
+  const overlay = document.getElementById("inactive-airspace-overlay");
+  overlay.querySelectorAll(".inactive-airspace-checkbox:checked").forEach((cb) => {
+    disableAirspaceToday(cb.dataset.key);
+  });
+  overlay.querySelectorAll(".inactive-airspace-manual-select").forEach((sel) => {
+    if (sel.value) disableAirspaceToday(sel.value);
+  });
+  overlay.classList.add("hidden");
+}
+
 function toggleAirspacesVisibility(visible) {
   airspacesVisible = visible;
   airspaceLayers.forEach(({ layer }) => {
@@ -1899,6 +1995,14 @@ function init() {
     toggleAirspacesVisibility(e.target.checked);
   });
   document.getElementById("btn-reenable-all-airspaces").addEventListener("click", reenableAllAirspaces);
+
+  document.getElementById("btn-apply-inactive-airspaces").addEventListener("click", applyInactiveAirspaceSelection);
+  document.getElementById("btn-close-inactive-airspace").addEventListener("click", () => {
+    document.getElementById("inactive-airspace-overlay").classList.add("hidden");
+  });
+  document.getElementById("inactive-airspace-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "inactive-airspace-overlay") e.target.classList.add("hidden");
+  });
 
   document.addEventListener("click", (e) => {
     const favBtn = e.target.closest(".fav-toggle");

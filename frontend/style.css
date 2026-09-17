@@ -596,6 +596,24 @@ html, body {
   border-radius: 5px;
 }
 
+.inactive-airspace-row {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.inactive-airspace-row .toggle-row {
+  margin-top: 4px;
+  margin-left: 4px;
+}
+
+.inactive-airspace-manual-select {
+  margin-left: 6px;
+  padding: 4px;
+  border: 1px solid #c7cfd9;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
 .flarm-table {
   width: 100%;
   border-collapse: collapse;
