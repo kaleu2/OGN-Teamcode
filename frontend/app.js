@@ -1515,8 +1515,10 @@ function saveDisabledAirspacesToday() {
 
 let disabledAirspacesToday = loadDisabledAirspacesToday();
 
-function airspaceKey(a) {
-  return `${a.name}__${a.airspace_class}`;
+function airspaceKey(a, idx) {
+  // idx macht den Key eindeutig, auch wenn mehrere Segmente (z.B. verschiedene
+  // Hoehenbaender einer TMA) denselben Namen + dieselbe Klasse haben.
+  return `${a.name}__${a.airspace_class}__${idx}`;
 }
 
 function airspaceColor(cls) {
@@ -1562,7 +1564,13 @@ function onMapClickAirspaceCheck(e) {
   if (!hits.length) return;
 
   const html = hits.map(({ data, key }) => airspacePopupHtml(data, key)).join("<hr>");
-  L.popup({ maxWidth: 260 }).setLatLng(e.latlng).setContent(html).openOn(map);
+  const popup = L.popup({ maxWidth: 260 }).setLatLng(e.latlng).setContent(html).openOn(map);
+  attachAirspacePopupHoverHandlers(popup);
+  // Falls das Popup geschlossen wird, waehrend ein Eintrag gelb markiert ist
+  // (z.B. Klick woanders hin, ohne vorher mit der Maus rauszufahren).
+  popup.on("remove", () => {
+    airspaceLayers.forEach(({ layer, baseStyle }) => layer.setStyle(baseStyle));
+  });
 }
 
 async function handleAirspaceFileChange(e) {
@@ -1591,7 +1599,7 @@ async function handleAirspaceFileChange(e) {
 
 function airspacePopupHtml(a, key) {
   return `
-    <div style="min-width:180px;">
+    <div class="airspace-popup-block" data-key="${key}" style="min-width:180px;">
       <div style="font-weight:bold; margin-bottom:4px;">${a.name || "(ohne Namen)"}</div>
       <div><b>Klasse:</b> ${a.airspace_class}</div>
       <div><b>Untergrenze:</b> ${a.floor.label}</div>
@@ -1601,28 +1609,53 @@ function airspacePopupHtml(a, key) {
   `;
 }
 
+// Hebt einen Luftraum auf der Karte gelb hervor (Hover in ueberlappender
+// Popup-Liste), damit erkennbar ist, welcher Eintrag zu welcher Flaeche gehoert.
+const AIRSPACE_HIGHLIGHT_STYLE = { color: "#f2c200", weight: 3, fillColor: "#f2c200", fillOpacity: 0.35 };
+
+function highlightAirspaceByKey(key) {
+  const entry = airspaceLayers.find((l) => l.key === key);
+  if (!entry) return;
+  entry.layer.setStyle(AIRSPACE_HIGHLIGHT_STYLE);
+  entry.layer.bringToFront();
+}
+
+function resetAirspaceHighlightByKey(key) {
+  const entry = airspaceLayers.find((l) => l.key === key);
+  if (!entry) return;
+  entry.layer.setStyle(entry.baseStyle);
+}
+
+function attachAirspacePopupHoverHandlers(popup) {
+  const el = popup.getElement ? popup.getElement() : null;
+  if (!el) return;
+  el.querySelectorAll(".airspace-popup-block").forEach((block) => {
+    const key = block.dataset.key;
+    block.addEventListener("mouseenter", () => highlightAirspaceByKey(key));
+    block.addEventListener("mouseleave", () => resetAirspaceHighlightByKey(key));
+  });
+}
+
 function renderAirspaces(airspaces) {
   airspaceLayers.forEach(({ layer }) => map.removeLayer(layer));
   airspaceLayers = [];
 
-  airspaces.forEach((a) => {
-    const key = airspaceKey(a);
+  airspaces.forEach((a, idx) => {
+    const key = airspaceKey(a, idx);
     if (disabledAirspacesToday.has(key)) return;
 
     const color = airspaceColor(a.airspace_class);
+    const baseStyle = { color, weight: 1.5, fillColor: color, fillOpacity: 0.08 };
     const latlngs = a.points.map((p) => [p[0], p[1]]);
     const polygon = L.polygon(latlngs, {
-      color,
-      weight: 1.5,
-      fillColor: color,
-      fillOpacity: 0.08,
+      ...baseStyle,
       pane: "airspacePane",
     });
     // Kein bindPopup mehr hier - Klicks laufen zentral ueber
     // onMapClickAirspaceCheck, damit bei Ueberlappung ALLE Treffer erscheinen.
 
     if (airspacesVisible) polygon.addTo(map);
-    airspaceLayers.push({ layer: polygon, key, data: a });
+    airspaceLayers.push({ layer: polygon, key, data: a, baseStyle });
   });
 
   renderDisabledAirspaceList();
